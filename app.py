@@ -5,7 +5,7 @@ import time
 
 # ── Config ────────────────────────────────────────────────────────────────
 FINNHUB_KEY = 'd6nbcn1r01qm6a8c9et0d6nbcn1r01qm6a8c9etg'
-ANTHROPIC_KEY = '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'
+ANTHROPIC_KEY = st.secrets.get('ANTHROPIC_KEY', '')
 
 CRYPTO = {
     'BTC':'bitcoin','ETH':'ethereum','SOL':'solana','XRP':'ripple',
