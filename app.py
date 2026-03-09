@@ -2,22 +2,19 @@ import streamlit as st
 import requests
 import pandas as pd
 import numpy as np
-import time
-import json
 
 # ---------------- CONFIG ----------------
 
-FINNHUB_KEY="d6nbcn1r01qm6a8c9et0d6nbcn1r01qm6a8c9etg"
-GEMINI_KEY=""
+FINNHUB_KEY = "d6nbcn1r01qm6a8c9et0d6nbcn1r01qm6a8c9etg"
 
-BINANCE_CRYPTO=set([
-"BTC","ETH","SOL","XRP","BNB","ADA","DOGE","AVAX"
-])
+BINANCE_CRYPTO = {
+    "BTC","ETH","SOL","XRP","BNB","ADA","DOGE","AVAX"
+}
 
 st.set_page_config(
-page_title="Trading Dashboard Pro",
-page_icon="📊",
-layout="wide"
+    page_title="Trading Dashboard PRO",
+    page_icon="📊",
+    layout="wide"
 )
 
 # ---------------- STYLE ----------------
@@ -39,291 +36,276 @@ font-weight:700;
 .wait{border:2px solid #ffd740;padding:20px;border-radius:10px}
 
 </style>
-""",unsafe_allow_html=True)
+""", unsafe_allow_html=True)
 
-# ---------------- FETCH PRICE ----------------
+# ---------------- PRICE ----------------
 
 def fetch_price(ticker):
 
-ticker=ticker.upper()
+    ticker = ticker.upper()
 
-# CRYPTO
-if ticker in BINANCE_CRYPTO:
+    # CRYPTO
+    if ticker in BINANCE_CRYPTO:
 
-try:
+        try:
 
-sym=ticker+"USDT"
+            sym = ticker + "USDT"
 
-r=requests.get(
-f"https://api.binance.com/api/v3/ticker/24hr?symbol={sym}",
-timeout=5
-)
+            r = requests.get(
+                f"https://api.binance.com/api/v3/ticker/24hr?symbol={sym}",
+                timeout=5
+            )
 
-j=r.json()
+            j = r.json()
 
-return{
-"price":float(j["lastPrice"]),
-"change":float(j["priceChangePercent"]),
-"source":"Binance",
-"ok":True
-}
+            return {
+                "price": float(j["lastPrice"]),
+                "change": float(j["priceChangePercent"]),
+                "source": "Binance",
+                "ok": True
+            }
 
-except:
-pass
+        except:
+            pass
 
-# STOCK
+    # STOCK
+    try:
 
-try:
+        r = requests.get(
+            f"https://finnhub.io/api/v1/quote?symbol={ticker}&token={FINNHUB_KEY}",
+            timeout=5
+        )
 
-r=requests.get(
-f"https://finnhub.io/api/v1/quote?symbol={ticker}&token={FINNHUB_KEY}",
-timeout=5
-)
+        j = r.json()
 
-j=r.json()
+        price = j["c"]
+        prev = j["pc"]
 
-price=j["c"]
-prev=j["pc"]
+        chg = ((price - prev) / prev) * 100
 
-chg=((price-prev)/prev)*100
+        return {
+            "price": price,
+            "change": chg,
+            "source": "Finnhub",
+            "ok": True
+        }
 
-return{
-"price":price,
-"change":chg,
-"source":"Finnhub",
-"ok":True
-}
+    except:
+        pass
 
-except:
-pass
+    # Yahoo fallback
+    try:
 
-# Yahoo fallback
+        r = requests.get(
+            f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?range=1mo&interval=1d",
+            headers={"User-Agent":"Mozilla"}
+        )
 
-try:
+        meta = r.json()["chart"]["result"][0]["meta"]
 
-r=requests.get(
-f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?range=1mo&interval=1d",
-headers={"User-Agent":"Mozilla"},
-timeout=5
-)
+        price = meta["regularMarketPrice"]
+        prev = meta["chartPreviousClose"]
 
-meta=r.json()["chart"]["result"][0]["meta"]
+        chg = ((price - prev) / prev) * 100
 
-price=meta["regularMarketPrice"]
-prev=meta["chartPreviousClose"]
+        return {
+            "price": price,
+            "change": chg,
+            "source": "Yahoo",
+            "ok": True
+        }
 
-chg=((price-prev)/prev)*100
+    except:
+        pass
 
-return{
-"price":price,
-"change":chg,
-"source":"Yahoo",
-"ok":True
-}
+    return {
+        "price": 0,
+        "change": 0,
+        "source": "none",
+        "ok": False
+    }
 
-except:
-pass
-
-return{
-"price":0,
-"change":0,
-"source":"none",
-"ok":False
-}
-
-# ---------------- FETCH CANDLE DATA ----------------
+# ---------------- CANDLES ----------------
 
 def fetch_candles(ticker):
 
-ticker=ticker.upper()
+    ticker = ticker.upper()
 
-# crypto
-if ticker in BINANCE_CRYPTO:
+    # CRYPTO
+    if ticker in BINANCE_CRYPTO:
 
-try:
+        try:
 
-sym=ticker+"USDT"
+            sym = ticker + "USDT"
 
-r=requests.get(
-f"https://api.binance.com/api/v3/klines?symbol={sym}&interval=1h&limit=200"
-)
+            r = requests.get(
+                f"https://api.binance.com/api/v3/klines?symbol={sym}&interval=1h&limit=200"
+            )
 
-data=r.json()
+            data = r.json()
 
-df=pd.DataFrame(data)
+            df = pd.DataFrame(data)
 
-df=df[[0,1,2,3,4,5]]
+            df = df[[0,1,2,3,4,5]]
 
-df.columns=["time","open","high","low","close","vol"]
+            df.columns = ["time","open","high","low","close","volume"]
 
-df["close"]=df["close"].astype(float)
+            df["close"] = df["close"].astype(float)
 
-return df
+            return df
 
-except:
-return None
+        except:
+            return None
 
-# stock
+    # STOCK
+    try:
 
-try:
+        r = requests.get(
+            f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?range=6mo&interval=1d",
+            headers={"User-Agent":"Mozilla"}
+        )
 
-r=requests.get(
-f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?range=6mo&interval=1d",
-headers={"User-Agent":"Mozilla"}
-)
+        j = r.json()["chart"]["result"][0]
 
-j=r.json()["chart"]["result"][0]
+        df = pd.DataFrame()
 
-df=pd.DataFrame()
+        df["close"] = j["indicators"]["quote"][0]["close"]
 
-df["close"]=j["indicators"]["quote"][0]["close"]
+        return df
 
-return df
-
-except:
-
-return None
+    except:
+        return None
 
 # ---------------- INDICATORS ----------------
 
 def add_indicators(df):
 
-df["ema20"]=df["close"].ewm(span=20).mean()
-df["ema50"]=df["close"].ewm(span=50).mean()
-df["ema100"]=df["close"].ewm(span=100).mean()
-df["ema200"]=df["close"].ewm(span=200).mean()
+    df["ema20"] = df["close"].ewm(span=20).mean()
+    df["ema50"] = df["close"].ewm(span=50).mean()
+    df["ema100"] = df["close"].ewm(span=100).mean()
+    df["ema200"] = df["close"].ewm(span=200).mean()
 
-df["tr"]=abs(df["close"].diff())
-df["atr"]=df["tr"].rolling(14).mean()
+    df["tr"] = abs(df["close"].diff())
+    df["atr"] = df["tr"].rolling(14).mean()
 
-return df
+    return df
 
-# ---------------- LOCAL ANALYSIS ----------------
+# ---------------- ANALYSIS ----------------
 
 def analyze(df):
 
-price=df["close"].iloc[-1]
+    price = df["close"].iloc[-1]
 
-ema20=df["ema20"].iloc[-1]
-ema50=df["ema50"].iloc[-1]
-ema100=df["ema100"].iloc[-1]
-ema200=df["ema200"].iloc[-1]
+    ema20 = df["ema20"].iloc[-1]
+    ema50 = df["ema50"].iloc[-1]
+    ema100 = df["ema100"].iloc[-1]
+    ema200 = df["ema200"].iloc[-1]
 
-atr=df["atr"].iloc[-1]
+    atr = df["atr"].iloc[-1]
 
-signal="wait"
+    signal = "wait"
 
-if price>ema20>ema50:
-signal="buy"
+    if price > ema20 > ema50:
+        signal = "buy"
 
-if price<ema20<ema50:
-signal="sell"
+    if price < ema20 < ema50:
+        signal = "sell"
 
-entry=ema20
-sl=entry-(atr*2)
-tp=entry+(atr*4)
+    entry = ema20
+    sl = entry - (atr * 2)
+    tp = entry + (atr * 4)
 
-return{
-"signal":signal,
-"ema20":ema20,
-"ema50":ema50,
-"ema100":ema100,
-"ema200":ema200,
-"atr":atr,
-"entry":entry,
-"sl":sl,
-"tp":tp
-}
+    return {
+        "signal": signal,
+        "ema20": ema20,
+        "ema50": ema50,
+        "ema100": ema100,
+        "ema200": ema200,
+        "atr": atr,
+        "entry": entry,
+        "sl": sl,
+        "tp": tp
+    }
 
 # ---------------- UI ----------------
 
 st.title("📊 Trading Dashboard PRO")
 
-colA,colB=st.columns([4,1])
+colA, colB = st.columns([4,1])
 
 with colA:
-ticker=st.text_input("Ticker","TSLA")
+    ticker = st.text_input("Ticker", "TSLA")
 
 with colB:
-refresh=st.button("Analyze")
+    run = st.button("Analyze")
 
-if refresh:
+if run:
 
-price_data=fetch_price(ticker)
+    price_data = fetch_price(ticker)
 
-df=fetch_candles(ticker)
+    df = fetch_candles(ticker)
 
-if df is None:
+    if df is None:
+        st.error("No data")
+        st.stop()
 
-st.error("No data")
+    df = add_indicators(df)
 
-st.stop()
+    analysis = analyze(df)
 
-df=add_indicators(df)
+    price = price_data["price"]
+    chg = price_data["change"]
 
-analysis=analyze(df)
+    col1, col2 = st.columns([3,1])
 
-price=price_data["price"]
-chg=price_data["change"]
+    with col1:
+        st.subheader(ticker)
 
-col1,col2=st.columns([3,1])
+    with col2:
+        st.markdown(
+            f"<div class='price'>${price:.2f}</div>",
+            unsafe_allow_html=True
+        )
+        st.write(f"{chg:.2f}%")
 
-with col1:
-st.subheader(ticker)
+    sig = analysis["signal"]
 
-with col2:
+    box = "wait"
+    if sig == "buy":
+        box = "buy"
+    if sig == "sell":
+        box = "sell"
 
-color="green" if chg>=0 else "red"
+    st.markdown(
+        f"<div class='{box}'><b>{sig.upper()}</b></div>",
+        unsafe_allow_html=True
+    )
 
-st.markdown(
-f"<div class='price'>${price:.2f}</div>",
-unsafe_allow_html=True
-)
+    st.subheader("Chart")
 
-st.write(f"{chg:.2f}%")
+    chart = df[["close","ema20","ema50"]]
 
-sig=analysis["signal"]
+    st.line_chart(chart)
 
-box="buy" if sig=="buy" else "sell" if sig=="sell" else "wait"
+    st.subheader("EMA")
 
-st.markdown(
-f"<div class='{box}'><b>{sig.upper()}</b></div>",
-unsafe_allow_html=True
-)
+    c1, c2, c3, c4 = st.columns(4)
 
-# ---------------- CHART ----------------
+    c1.metric("EMA20", f"{analysis['ema20']:.2f}")
+    c2.metric("EMA50", f"{analysis['ema50']:.2f}")
+    c3.metric("EMA100", f"{analysis['ema100']:.2f}")
+    c4.metric("EMA200", f"{analysis['ema200']:.2f}")
 
-st.subheader("Price Chart")
+    st.subheader("Trade Setup")
 
-chart=df[["close","ema20","ema50"]]
+    s1, s2, s3 = st.columns(3)
 
-st.line_chart(chart)
+    s1.metric("Entry", f"{analysis['entry']:.2f}")
+    s2.metric("Stop Loss", f"{analysis['sl']:.2f}")
+    s3.metric("Take Profit", f"{analysis['tp']:.2f}")
 
-# ---------------- EMA ----------------
+    st.subheader("ATR")
 
-st.subheader("EMA")
+    st.metric("ATR", f"{analysis['atr']:.2f}")
 
-c1,c2,c3,c4=st.columns(4)
-
-c1.metric("EMA20",f"{analysis['ema20']:.2f}")
-c2.metric("EMA50",f"{analysis['ema50']:.2f}")
-c3.metric("EMA100",f"{analysis['ema100']:.2f}")
-c4.metric("EMA200",f"{analysis['ema200']:.2f}")
-
-# ---------------- TRADE SETUP ----------------
-
-st.subheader("Trade Setup")
-
-s1,s2,s3=st.columns(3)
-
-s1.metric("Entry",f"{analysis['entry']:.2f}")
-s2.metric("Stop Loss",f"{analysis['sl']:.2f}")
-s3.metric("Take Profit",f"{analysis['tp']:.2f}")
-
-# ---------------- ATR ----------------
-
-st.subheader("Volatility")
-
-st.metric("ATR",f"{analysis['atr']:.2f}")
-
-st.caption("Education only")
+    st.caption("For education only")
