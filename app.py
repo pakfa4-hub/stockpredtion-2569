@@ -5,7 +5,7 @@ import time
 
 # ── Config ────────────────────────────────────────────────────────────────
 FINNHUB_KEY = 'd6nbcn1r01qm6a8c9et0d6nbcn1r01qm6a8c9etg'
-ANTHROPIC_KEY = st.secrets.get('ANTHROPIC_KEY', '')
+GEMINI_KEY = st.secrets.get('GEMINI_KEY', '')
 
 CRYPTO = {
     'BTC':'bitcoin','ETH':'ethereum','SOL':'solana','XRP':'ripple',
@@ -146,23 +146,15 @@ def ai_analyze(ticker, price_data):
 "recStatus":"","recEntry":"","recExit":"","recRR":""}}"""
 
     r = requests.post(
-        'https://api.anthropic.com/v1/messages',
-        headers={
-            'x-api-key': ANTHROPIC_KEY,
-            'anthropic-version': '2023-06-01',
-            'content-type': 'application/json'
-        },
-        json={
-            'model': 'claude-sonnet-4-20250514',
-            'max_tokens': 1000,
-            'messages': [{'role': 'user', 'content': prompt}]
-        },
+        f'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_KEY}',
+        headers={'Content-Type': 'application/json'},
+        json={'contents': [{'parts': [{'text': prompt}]}]},
         timeout=30
     )
     rd = r.json()
-    if 'content' not in rd:
+    if 'candidates' not in rd:
         raise Exception(f"API Error: {rd.get('error', {}).get('message', str(rd))}")
-    txt = ''.join(b['text'] for b in rd['content'] if b.get('type') == 'text')
+    txt = rd['candidates'][0]['content']['parts'][0]['text']
     txt = txt.replace('```json', '').replace('```', '').strip()
     return json.loads(txt)
 
