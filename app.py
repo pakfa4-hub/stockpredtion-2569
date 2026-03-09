@@ -1,226 +1,237 @@
 import streamlit as st
-import requests
+import yfinance as yf
 import pandas as pd
+import plotly.graph_objects as go
+import google.generativeai as genai
 
-FINNHUB_KEY="d6nbcn1r01qm6a8c9et0d6nbcn1r01qm6a8c9etg"
+# ---------------------------
+# CONFIG
+# ---------------------------
 
-BINANCE_CRYPTO={"BTC","ETH","SOL","XRP","BNB","ADA","DOGE"}
+st.set_page_config(
+    page_title="Trading Dashboard",
+    layout="wide"
+)
 
-st.set_page_config(page_title="Trading Dashboard",layout="wide")
-
-# ---------- CSS ----------
+# ---------------------------
+# CSS STYLE
+# ---------------------------
 
 st.markdown("""
 <style>
 
-body{
-background:#060910;
-color:white;
+@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Sarabun:wght@300;400;700&display=swap');
+
+html, body, [class*="css"]  {
+    font-family: 'Sarabun', sans-serif;
+    background-color:#0d1117;
+}
+
+h1{
+    font-family: 'Share Tech Mono', monospace;
+    color:#58a6ff;
+}
+
+.subtitle{
+    color:#8b949e;
+    margin-bottom:20px;
+}
+
+.stTextInput input{
+    background:#0d1117;
+    border:1px solid #1c2333;
+    color:white;
+    border-radius:8px;
+    padding:10px;
+    font-family:'Share Tech Mono', monospace;
+    letter-spacing:2px;
+}
+
+.stButton button{
+    background:#58a6ff;
+    color:white;
+    border-radius:8px;
+    padding:10px 18px;
+    font-weight:700;
 }
 
 .card{
-background:#0d1117;
-border:1px solid #1c2333;
-border-radius:10px;
-padding:16px;
-margin-bottom:12px;
+    background:#161b22;
+    padding:20px;
+    border-radius:12px;
+    border:1px solid #30363d;
 }
 
-.price{
-font-size:36px;
-font-weight:700;
+.metric{
+    font-size:28px;
+    font-weight:700;
 }
-
-.buy{border:2px solid #00e676;padding:20px;border-radius:10px}
-.sell{border:2px solid #ff3d57;padding:20px;border-radius:10px}
-.wait{border:2px solid #ffd740;padding:20px;border-radius:10px}
 
 </style>
-""",unsafe_allow_html=True)
+""", unsafe_allow_html=True)
 
-# ---------- PRICE ----------
+# ---------------------------
+# HEADER
+# ---------------------------
 
-def fetch_price(ticker):
+st.markdown("# 📊 Trading Dashboard")
 
-    ticker=ticker.upper()
+st.markdown(
+'<div class="subtitle">EMA Multi-Timeframe Strategy · AI Analysis · Real-time Price</div>',
+unsafe_allow_html=True
+)
 
-    if ticker in BINANCE_CRYPTO:
+# ---------------------------
+# INPUT
+# ---------------------------
 
-        try:
+col1,col2 = st.columns([4,1])
 
-            sym=ticker+"USDT"
+with col1:
+    ticker = st.text_input("",value="TSLA")
 
-            r=requests.get(
-                f"https://api.binance.com/api/v3/ticker/24hr?symbol={sym}"
-            )
+with col2:
+    analyze = st.button("🔎 Analyze")
 
-            j=r.json()
+# Quick picks
+st.caption("SPY  AAPL  NVDA  TSLA  MSFT  AMZN   |   BTC-USD  ETH-USD")
 
-            return {
-                "price":float(j["lastPrice"]),
-                "change":float(j["priceChangePercent"]),
-                "source":"Binance",
-                "ok":True
-            }
+# ---------------------------
+# DATA
+# ---------------------------
 
-        except:
-            pass
+@st.cache_data
+def load_data(ticker):
 
-    try:
+    df = yf.download(ticker,period="6mo",interval="1d")
 
-        r=requests.get(
-            f"https://finnhub.io/api/v1/quote?symbol={ticker}&token={FINNHUB_KEY}"
-        )
-
-        j=r.json()
-
-        price=j["c"]
-        prev=j["pc"]
-
-        chg=((price-prev)/prev)*100
-
-        return{
-            "price":price,
-            "change":chg,
-            "source":"Finnhub",
-            "ok":True
-        }
-
-    except:
-        pass
-
-    return{"price":0,"change":0,"source":"none","ok":False}
-
-# ---------- CANDLES ----------
-
-def fetch_candles(ticker):
-
-    ticker=ticker.upper()
-
-    try:
-
-        r=requests.get(
-            f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?range=6mo&interval=1d",
-            headers={"User-Agent":"Mozilla"}
-        )
-
-        j=r.json()["chart"]["result"][0]
-
-        df=pd.DataFrame()
-
-        df["close"]=j["indicators"]["quote"][0]["close"]
-
-        return df
-
-    except:
-        return None
-
-# ---------- INDICATORS ----------
-
-def indicators(df):
-
-    df["ema20"]=df["close"].ewm(span=20).mean()
-    df["ema50"]=df["close"].ewm(span=50).mean()
-    df["ema100"]=df["close"].ewm(span=100).mean()
-    df["ema200"]=df["close"].ewm(span=200).mean()
-
-    df["tr"]=abs(df["close"].diff())
-    df["atr"]=df["tr"].rolling(14).mean()
+    df["EMA20"] = df["Close"].ewm(span=20).mean()
+    df["EMA50"] = df["Close"].ewm(span=50).mean()
+    df["EMA200"] = df["Close"].ewm(span=200).mean()
 
     return df
 
-# ---------- ANALYSIS ----------
+if analyze:
 
-def analyze(df):
+    try:
 
-    price=df["close"].iloc[-1]
+        df = load_data(ticker)
 
-    ema20=df["ema20"].iloc[-1]
-    ema50=df["ema50"].iloc[-1]
+        if df.empty:
+            st.error("Ticker not found")
+            st.stop()
 
-    atr=df["atr"].iloc[-1]
+        price = df["Close"].iloc[-1]
+        change = df["Close"].pct_change().iloc[-1]*100
 
-    signal="wait"
+        # ---------------------------
+        # METRICS
+        # ---------------------------
 
-    if price>ema20>ema50:
-        signal="buy"
+        col1,col2,col3 = st.columns(3)
 
-    if price<ema20<ema50:
-        signal="sell"
+        with col1:
+            st.metric("Price",f"${price:,.2f}")
 
-    entry=ema20
-    sl=entry-(atr*2)
-    tp=entry+(atr*4)
+        with col2:
+            st.metric("Daily Change",f"{change:.2f}%")
 
-    return signal,ema20,ema50,atr,entry,sl,tp
+        with col3:
+            st.metric("Volume",f"{df['Volume'].iloc[-1]:,.0f}")
 
-# ---------- UI ----------
+        # ---------------------------
+        # CHART
+        # ---------------------------
 
-st.title("📊 Trading Dashboard")
+        fig = go.Figure()
 
-col1,col2=st.columns([5,1])
+        fig.add_trace(go.Candlestick(
+            x=df.index,
+            open=df["Open"],
+            high=df["High"],
+            low=df["Low"],
+            close=df["Close"],
+            name="Price"
+        ))
 
-with col1:
-    ticker=st.text_input("Ticker","TSLA")
+        fig.add_trace(go.Scatter(
+            x=df.index,
+            y=df["EMA20"],
+            line=dict(width=1),
+            name="EMA20"
+        ))
 
-with col2:
-    run=st.button("Analyze")
+        fig.add_trace(go.Scatter(
+            x=df.index,
+            y=df["EMA50"],
+            line=dict(width=1),
+            name="EMA50"
+        ))
 
-if run:
+        fig.add_trace(go.Scatter(
+            x=df.index,
+            y=df["EMA200"],
+            line=dict(width=1),
+            name="EMA200"
+        ))
 
-    price_data=fetch_price(ticker)
+        fig.update_layout(
+            template="plotly_dark",
+            height=600
+        )
 
-    df=fetch_candles(ticker)
+        st.plotly_chart(fig,use_container_width=True)
 
-    if df is None:
-        st.error("No data")
-        st.stop()
+        # ---------------------------
+        # STRATEGY
+        # ---------------------------
 
-    df=indicators(df)
+        ema20 = df["EMA20"].iloc[-1]
+        ema50 = df["EMA50"].iloc[-1]
+        ema200 = df["EMA200"].iloc[-1]
 
-    signal,ema20,ema50,atr,entry,sl,tp=analyze(df)
+        if ema20 > ema50 > ema200:
+            signal = "📈 Strong Uptrend"
+        elif ema20 < ema50 < ema200:
+            signal = "📉 Downtrend"
+        else:
+            signal = "⚠️ Sideway"
 
-    price=price_data["price"]
-    chg=price_data["change"]
+        st.subheader("Strategy Signal")
+        st.success(signal)
 
-    c1,c2=st.columns([3,1])
+        # ---------------------------
+        # AI ANALYSIS
+        # ---------------------------
 
-    with c1:
-        st.subheader(ticker)
+        st.subheader("🤖 AI Analysis")
 
-    with c2:
-        st.markdown(f"<div class='price'>${price:.2f}</div>",unsafe_allow_html=True)
-        st.write(f"{chg:.2f}%")
+        try:
 
-    box="wait"
+            genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
 
-    if signal=="buy":
-        box="buy"
+            model = genai.GenerativeModel("gemini-1.5-flash")
 
-    if signal=="sell":
-        box="sell"
+            prompt = f"""
+            Analyze this stock:
 
-    st.markdown(f"<div class='{box}'><b>{signal.upper()}</b></div>",unsafe_allow_html=True)
+            Ticker: {ticker}
+            Price: {price}
 
-    st.subheader("Chart")
+            EMA20: {ema20}
+            EMA50: {ema50}
+            EMA200: {ema200}
 
-    st.line_chart(df[["close","ema20","ema50"]])
+            Give short trading insight.
+            """
 
-    st.subheader("EMA")
+            response = model.generate_content(prompt)
 
-    e1,e2=st.columns(2)
+            st.write(response.text)
 
-    e1.metric("EMA20",f"{ema20:.2f}")
-    e2.metric("EMA50",f"{ema50:.2f}")
+        except:
+            st.warning("AI analysis unavailable")
 
-    st.subheader("Trade Setup")
+    except Exception as e:
 
-    s1,s2,s3=st.columns(3)
-
-    s1.metric("Entry",f"{entry:.2f}")
-    s2.metric("Stop Loss",f"{sl:.2f}")
-    s3.metric("Take Profit",f"{tp:.2f}")
-
-    st.subheader("ATR")
-
-    st.metric("ATR",f"{atr:.2f}")
+        st.error(f"Error: {e}")
